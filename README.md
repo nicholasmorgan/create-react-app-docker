@@ -1,70 +1,123 @@
-# Getting Started with Create React App
+# Build and Deploy a Create React App with Tekton
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+## How to clone from a private Github Enterprise repo with an ssh key
 
-## Available Scripts
+1. Create the key on your local machine:
 
-In the project directory, you can run:
+```
+ssh-keygen -t rsa -b 4096 -C "your@email.com"
+```
 
-### `yarn start`
+n.b. leave the password field blank.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+2. Copy your public key to the clipboard.
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+```
+pbcopy < name-of-your-key.pub
+```
 
-### `yarn test`
+3. Add the Deploy key to the Github Repo and check `Allow write access` (Setting > Deploy keys)
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+4. Copy the private key to your clipboard.
 
-### `yarn build`
+```
+pbcopy < name-of-your-key
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+5. Add the private key to OpenShift as a Secret.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+   > - On the Openshift Console go to Workloads > Secrets.
+   > - Click Create > Source Secret.
+   > - Choose Authentication Type - SSH Key.
+   > - Paste the Private key into the SSH Private Key textarea.
+   > - Click Create.
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+6. Annotate the Secret.
 
-### `yarn eject`
+   > - On the Secret in the console click Actions > Edit Annotations.
+   > - set KEY to: tekton.dev/git-0
+   > - set VALUE to: github.ibm.com
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+7. Add known_hosts to your secret
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+Copy the Known Host value to your clipboard.
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+```
+ssh-keyscan <Your Repo Host> | base64 | pbcopy
+```
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+```
+e.g.
+ssh-keyscan github.ibm.com | base64 | pbcopy
+```
 
-## Learn More
+Add the known hosts to your Secret by editing the Secret yaml directly and pasting in the `known_hosts` field. Once done it should look similar to the following:
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ssh-key
+  annotations:
+    tekton.dev/git-0: github.ibm.com
+data:
+  ssh-privatekey: <private-key>
+  known_hosts: <known-hosts>
+type: kubernetes.io/ssh-auth
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+8. Add the secret to your Pipeline Service Account
 
-### Code Splitting
+```
+oc secrets link <Service Account Name> <Secret name>
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```
+e.g.
+ oc secrets link pipeline spring-was-lib-github-pull-secret
+```
 
-### Analyzing the Bundle Size
+## Building and running the pipeline manually.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+Apply the PVC yaml to create a Persistent Volume Claim that is needed to persist the cloned code between tasks.
 
-### Making a Progressive Web App
+```
+oc apply - tekton/PVC
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+Apply the Pipeline and Task yamls
 
-### Advanced Configuration
+```
+oc apply - tekton/Pipeline
+```
+```
+oc apply - tekton/Tasks
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+To start the Pipeline with a PipelineRun, save a copy of the PipelineRun yaml in the `PipelineRun` folder to your local machine, update the `docker-image` param with what you want for your project and run the following.
+```
+oc create -f <path to pipelne run>
+```
 
-### Deployment
+## Triggering the pipeline with a webhook.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+Edit the `image-namespace` default variable in tekton/TriggerTamplate.yaml to be the namespace in the internal image registry the image will be saved.
 
-### `yarn build` fails to minify
+Apply the Trigger yamls
+```
+oc apply - tekton/Triggers
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+Creating an EventListener will create a pod and a service automatically. Expose that service so that you have an endpoint for Github to send POST requests to.
+```
+oc service <name-of-event-listener-service>
+```
+### Configure Github Enterprise
+
+1. In Github Enterprise go to Settings > Hooks.
+2. Click `Add Webhook`.
+3. Under payload URL, paste the the newly created URL of the Route you just exposed.
+4. Set Content type to be application/json.
+5. Click `Add Webhook`
+
+Push some code to your repo to trigger the pipeline.

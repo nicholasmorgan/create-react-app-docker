@@ -1,0 +1,13 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: EventListener
+metadata:
+  name: example-pipeline
+spec:
+  serviceAccountName: pipeline
+  triggers:
+    - bindings:
+        - kind: TriggerBinding
+          name: github-trigger-binding
+      name: react-app-trigger-template
+      template:
+        name: react-app-trigger-template

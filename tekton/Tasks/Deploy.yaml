@@ -1,0 +1,29 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: deploy
+spec:
+  params:
+    - name: docker-image
+      type: string
+  steps:
+    - command:
+        - sed
+        - '-i'
+        - s|<DOCKER_IMAGE>|$(params.docker-image)|g
+        - ./manifests/deployment.yaml
+      image: 'image-registry.openshift-image-registry.svc:5000/openshift/cli'
+      name: update-deployment
+      resources: {}
+      workingDir: $(workspaces.output.path)
+    - command:
+        - oc
+        - apply
+        - '-f'
+        - manifests/deployment.yaml
+      image: 'image-registry.openshift-image-registry.svc:5000/openshift/cli'
+      name: deploy-image
+      resources: {}
+      workingDir: $(workspaces.output.path)
+  workspaces:
+    - name: output

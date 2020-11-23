@@ -1,0 +1,64 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: build-push
+spec:
+  params:
+    - default: 'quay.io/buildah/stable:v1.11.0'
+      description: The location of the buildah builder image.
+      name: BUILDER_IMAGE
+      type: string
+    - default: ./Dockerfile
+      description: Path to the Dockerfile to build.
+      name: DOCKERFILE
+      type: string
+    - default: .
+      description: Path to the directory to use as context.
+      name: CONTEXT
+      type: string
+    - default: 'false'
+      description: >-
+        Verify the TLS on the registry endpoint (for push/pull to a non-TLS
+        registry)
+      name: TLSVERIFY
+      type: string
+    - name: docker-image
+      type: string
+  steps:
+    - command:
+        - buildah
+        - bud
+        - '--tls-verify=$(params.TLSVERIFY)'
+        - '-f'
+        - $(params.DOCKERFILE)
+        - '-t'
+        - $(params.docker-image)
+        - $(params.CONTEXT)
+      image: $(params.BUILDER_IMAGE)
+      name: build
+      resources: {}
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - mountPath: /var/lib/containers
+          name: varlibcontainers
+      workingDir: $(workspaces.output.path)
+    - command:
+        - buildah
+        - push
+        - '--tls-verify=false'
+        - $(params.docker-image)
+        - 'docker://$(params.docker-image)'
+      image: $(params.BUILDER_IMAGE)
+      name: push
+      resources: {}
+      securityContext:
+        privileged: true
+      volumeMounts:
+        - mountPath: /var/lib/containers
+          name: varlibcontainers
+  volumes:
+    - emptyDir: {}
+      name: varlibcontainers
+  workspaces:
+    - name: output

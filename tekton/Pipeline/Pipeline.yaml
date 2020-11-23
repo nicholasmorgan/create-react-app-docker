@@ -1,0 +1,52 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: ci-cd-pipeline
+spec:
+  params:
+    - name: docker-image
+      type: string
+  tasks:
+    - name: git-clone
+      params:
+        - name: url
+          value: 'git@github.com:nicholasmorgan/create-react-app-docker.git'
+        - name: revision
+          value: master
+        - name: submodules
+          value: 'true'
+        - name: depth
+          value: '1'
+        - name: sslVerify
+          value: 'true'
+        - name: deleteExisting
+          value: 'true'
+      taskRef:
+        kind: Task
+        name: git-clone
+      workspaces:
+        - name: output
+          workspace: git-source
+    - name: build-push
+      params:
+        - name: BUILDER_IMAGE
+          value: 'quay.io/buildah/stable:v1.11.0'
+        - name: DOCKERFILE
+          value: ./Dockerfile
+        - name: CONTEXT
+          value: .
+        - name: TLSVERIFY
+          value: 'false'
+        - name: docker-image
+          value: $(params.docker-image)
+      runAfter:
+        - git-clone
+      taskRef:
+        kind: Task
+        name: build-push
+      workspaces:
+        - name: output
+          workspace: git-source
+  workspaces:
+    - description: The git repo
+      name: git-source

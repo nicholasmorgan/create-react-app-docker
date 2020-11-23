@@ -1,0 +1,27 @@
+apiVersion: triggers.tekton.dev/v1alpha1
+kind: TriggerTemplate
+metadata:
+  name: react-app-trigger-template
+spec:
+  params:
+    - name: commitId
+    - default: my-project
+      name: image-namespace
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1beta1
+      kind: PipelineRun
+      metadata:
+        generateName: pipeline-
+      spec:
+        params:
+          - name: docker-image
+            value: >-
+              image-registry.openshift-image-registry.svc:5000/$(params.image-namespace)/react-app-docker:$(params.commitId)
+        pipelineRef:
+          name: ci-cd-pipeline
+        serviceAccountName: pipeline
+        timeout: 1h0m0s
+        workspaces:
+          - name: git-source
+            persistentVolumeClaim:
+              claimName: tekton-pvc

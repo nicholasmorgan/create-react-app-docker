@@ -1,0 +1,16 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: pipeline-
+spec:
+  params:
+    - name: docker-image
+      value: image-registry.openshift-image-registry.svc:5000/nick/react-app-docker:latest
+  pipelineRef:
+    name: ci-cd-pipeline
+  workspaces:
+    - name: git-source
+      persistentVolumeClaim:
+        claimName: tekton-pvc
+  serviceAccountName: pipeline
+  timeout: 1h0m0s
