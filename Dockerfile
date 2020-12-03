@@ -8,9 +8,9 @@ USER 0
 RUN chown -R 1001:0 /usr/src/app
 USER 1001
  
-RUN yarn install --no-cache --production=true && \
-    yarn run build && \
-    yarn global add serve
+RUN npm install  && \
+    npm run build && \
+    npm -g install serve
 
 EXPOSE 3000
  
